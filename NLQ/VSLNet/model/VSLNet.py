@@ -2,7 +2,8 @@
 """
 import torch
 import torch.nn as nn
-from transformers import AdamW, get_linear_schedule_with_warmup
+from transformers import get_linear_schedule_with_warmup
+from torch.optim import AdamW
 
 from model.layers import (
     Embedding,
