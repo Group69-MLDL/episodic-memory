@@ -1,4 +1,4 @@
-"""VSLNet Baseline for Ego4D Episodic Memory -- Natural Language Queries.
+"""VSLBase Baseline for Ego4D Episodic Memory -- Natural Language Queries.
 """
 import torch
 import torch.nn as nn
@@ -50,9 +50,9 @@ def build_optimizer_and_scheduler(model, configs):
     return optimizer, scheduler
 
 
-class VSLNet(nn.Module):
+class VSLBase(nn.Module):
     def __init__(self, configs, word_vectors):
-        super(VSLNet, self).__init__()
+        super(VSLBase, self).__init__()
         self.configs = configs
         self.video_affine = VisualProjection(
             visual_dim=configs.video_feature_dim,
