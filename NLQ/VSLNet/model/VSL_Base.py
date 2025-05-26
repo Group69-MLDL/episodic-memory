@@ -144,3 +144,6 @@ class VSLBase(nn.Module):
         return self.predictor.compute_cross_entropy_loss(
             start_logits=start_logits,
             end_logits=end_logits,
+            start_labels=start_labels,
+            end_labels=end_labels,
+        )
