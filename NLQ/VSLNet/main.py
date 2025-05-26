@@ -1,4 +1,4 @@
-from vsl_base import VSLBase
+from model.VSL_Base import VSLBase
 import options
 import submitit
 
