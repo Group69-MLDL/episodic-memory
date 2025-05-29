@@ -1,5 +1,4 @@
-"""VSLNet Baseline for Ego4D Episodic Memory -- Natural Language Queries.
-"""
+"""VSLNet Baseline for Ego4D Episodic Memory -- Natural Language Queries with non-shared encoders."""
 import torch
 import torch.nn as nn
 from transformers import get_linear_schedule_with_warmup
@@ -16,27 +15,18 @@ from model.layers import (
     BertEmbedding,
 )
 
-
 def build_optimizer_and_scheduler(model, configs):
-    no_decay = [
-        "bias",
-        "layer_norm",
-        "LayerNorm",
-    ]  # no decay for parameters of layer norm and bias
+    no_decay = ["bias", "layer_norm", "LayerNorm"]
     optimizer_grouped_parameters = [
         {
             "params": [
-                p
-                for n, p in model.named_parameters()
-                if not any(nd in n for nd in no_decay)
+                p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)
             ],
             "weight_decay": 0.01,
         },
         {
             "params": [
-                p
-                for n, p in model.named_parameters()
-                if any(nd in n for nd in no_decay)
+                p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)
             ],
             "weight_decay": 0.0,
         },
@@ -54,12 +44,16 @@ class VSLNet(nn.Module):
     def __init__(self, configs, word_vectors):
         super(VSLNet, self).__init__()
         self.configs = configs
+
+        # Video feature projection
         self.video_affine = VisualProjection(
             visual_dim=configs.video_feature_dim,
             dim=configs.dim,
             drop_rate=configs.drop_rate,
         )
-        self.feature_encoder = FeatureEncoder(
+
+        # Separate encoders for video and text
+        self.video_encoder = FeatureEncoder(
             dim=configs.dim,
             num_heads=configs.num_heads,
             kernel_size=7,
@@ -67,12 +61,19 @@ class VSLNet(nn.Module):
             max_pos_len=configs.max_pos_len,
             drop_rate=configs.drop_rate,
         )
-        # video and query fusion
+
+        self.text_encoder = FeatureEncoder(
+            dim=configs.dim,
+            num_heads=configs.num_heads,
+            kernel_size=7,
+            num_layers=4,
+            max_pos_len=configs.max_pos_len,
+            drop_rate=configs.drop_rate,
+        )
+
         self.cq_attention = CQAttention(dim=configs.dim, drop_rate=configs.drop_rate)
         self.cq_concat = CQConcatenate(dim=configs.dim)
-        # query-guided highlighting
         self.highlight_layer = HighLightLayer(dim=configs.dim)
-        # conditioned predictor
         self.predictor = ConditionedPredictor(
             dim=configs.dim,
             num_heads=configs.num_heads,
@@ -81,11 +82,8 @@ class VSLNet(nn.Module):
             predictor=configs.predictor,
         )
 
-        # If pretrained transformer, initialize_parameters and load.
         if configs.predictor == "bert":
-            # Project back from BERT to dim.
             self.query_affine = nn.Linear(768, configs.dim)
-            # init parameters
             self.init_parameters()
             self.embedding_net = BertEmbedding(configs.text_agnostic)
         else:
@@ -98,16 +96,11 @@ class VSLNet(nn.Module):
                 word_vectors=word_vectors,
                 drop_rate=configs.drop_rate,
             )
-            # init parameters
             self.init_parameters()
 
     def init_parameters(self):
         def init_weights(m):
-            if (
-                isinstance(m, nn.Conv2d)
-                or isinstance(m, nn.Conv1d)
-                or isinstance(m, nn.Linear)
-            ):
+            if isinstance(m, (nn.Conv2d, nn.Conv1d, nn.Linear)):
                 torch.nn.init.xavier_uniform_(m.weight)
                 if m.bias is not None:
                     torch.nn.init.zeros_(m.bias)
@@ -124,8 +117,10 @@ class VSLNet(nn.Module):
         else:
             query_features = self.embedding_net(word_ids, char_ids)
 
-        query_features = self.feature_encoder(query_features, mask=q_mask)
-        video_features = self.feature_encoder(video_features, mask=v_mask)
+        # Use non-shared encoders
+        query_features = self.text_encoder(query_features, mask=q_mask)
+        video_features = self.video_encoder(video_features, mask=v_mask)
+
         features = self.cq_attention(video_features, query_features, v_mask, q_mask)
         features = self.cq_concat(features, query_features, q_mask)
         h_score = self.highlight_layer(features, v_mask)
@@ -134,14 +129,10 @@ class VSLNet(nn.Module):
         return h_score, start_logits, end_logits
 
     def extract_index(self, start_logits, end_logits):
-        return self.predictor.extract_index(
-            start_logits=start_logits, end_logits=end_logits
-        )
+        return self.predictor.extract_index(start_logits=start_logits, end_logits=end_logits)
 
     def compute_highlight_loss(self, scores, labels, mask):
-        return self.highlight_layer.compute_loss(
-            scores=scores, labels=labels, mask=mask
-        )
+        return self.highlight_layer.compute_loss(scores=scores, labels=labels, mask=mask)
 
     def compute_loss(self, start_logits, end_logits, start_labels, end_labels):
         return self.predictor.compute_cross_entropy_loss(
