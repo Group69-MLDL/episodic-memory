@@ -1,14 +1,14 @@
 WORKERS: 0
 DEBUG: False
 
-MODEL_DIR: ./checkpoints
-RESULT_DIR: ./results
-LOG_DIR: ./log
-DATA_DIR: ./data/Ego4D_clip
+MODEL_DIR: /content/checkpoints_2dtan
+RESULT_DIR: /content/results_2dtan
+LOG_DIR: /content/log_2dtan
+DATA_DIR: /content/prepared_dataset
 
 DATASET:
   NAME: Ego4DClip
-  VIS_INPUT_TYPE: slowfast
+  VIS_INPUT_TYPE: omnivore
   NO_VAL: False
   NUM_SAMPLE_CLIPS: 40
   TARGET_STRIDE: 1
